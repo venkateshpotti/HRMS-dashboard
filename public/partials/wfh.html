@@ -1,0 +1,134 @@
+<style>
+    .wfh-container { max-width: 800px; margin: 0 auto; }
+    .wfh-container h2 { text-align: center; color: var(--text-color); margin-bottom: 30px; }
+    .wfh-container label { display: block; margin-bottom: 8px; font-weight: bold; color: var(--text-color); }
+    .wfh-container .form-control {
+        background-color: var(--body-bg);
+        color: var(--text-color);
+        border: 1px solid var(--border-color);
+    }
+    .wfh-container .form-control:read-only {
+        background-color: var(--sidebar-bg);
+    }
+    .message { margin-top: 20px; padding: 10px; border-radius: 4px; text-align: center; font-weight: bold;}
+    .success { background-color: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
+    .error { background-color: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
+</style>
+
+<div class="wfh-container">
+    <h2>Work From Home Request</h2>
+    <form id="wfhForm" novalidate>
+        <div class="row g-3">
+            <div class="col-md-4">
+                <label for="name">Full Name:</label>
+                <input type="text" class="form-control" id="name" name="name" required readonly>
+            </div>
+            <div class="col-md-4">
+                <label for="employee_id">Employee ID:</label>
+                <input type="text" class="form-control" id="employee_id" name="employee_id" required readonly>
+            </div>
+            <div class="col-md-4">
+                <label for="email">Email:</label>
+                <input type="email" class="form-control" id="email" name="email" required readonly>
+            </div>
+            <div class="col-md-6">
+                <label for="project">Project (Optional):</label>
+                <input type="text" class="form-control" id="project" name="project">
+            </div>
+            <div class="col-md-6">
+                <label for="manager">Manager (Optional):</label>
+                <input type="text" class="form-control" id="manager" name="manager">
+            </div>
+            <div class="col-12">
+                <label for="location">WFH Location (e.g., Home - City):</label>
+                <input type="text" class="form-control" id="location" name="location" required>
+            </div>
+            <div class="col-md-6">
+                <label for="from_date">From Date:</label>
+                <input type="date" class="form-control" id="from_date" name="from_date" required>
+            </div>
+            <div class="col-md-6">
+                <label for="to_date">To Date:</label>
+                <input type="date" class="form-control" id="to_date" name="to_date" required>
+            </div>
+            <div class="col-12">
+                <label for="reason">Reason:</label>
+                <textarea class="form-control" id="reason" name="reason" rows="4" required></textarea>
+            </div>
+            <div class="col-12 text-center">
+                <button type="submit" class="btn btn-primary btn-lg">Submit Request</button>
+            </div>
+        </div>
+    </form>
+    <div id="responseMessage" class="message" style="display: none;"></div>
+</div>
+
+<script>
+(function() {
+    const token = localStorage.getItem('token');
+    if (!token) { window.location.href = '/login'; return; }
+    
+    const wfhForm = document.getElementById('wfhForm');
+    const responseMessageDiv = document.getElementById('responseMessage');
+    
+    const loadUserDetails = async () => {
+        try {
+            const response = await fetch('/api/user/me', { headers: { 'Authorization': `Bearer ${token}` } });
+            if (!response.ok) throw new Error('Could not fetch user details.');
+            const user = await response.json();
+            document.getElementById('name').value = user.username;
+            document.getElementById('employee_id').value = user.employee_id;
+            document.getElementById('email').value = user.email;
+        } catch (error) {
+            responseMessageDiv.textContent = error.message;
+            responseMessageDiv.className = 'message error';
+            responseMessageDiv.style.display = 'block';
+        }
+    };
+    
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('from_date').setAttribute('min', today);
+    document.getElementById('to_date').setAttribute('min', today);
+
+    wfhForm.addEventListener('submit', async function(event) {
+        event.preventDefault();
+
+        if (document.getElementById('to_date').value < document.getElementById('from_date').value) {
+            responseMessageDiv.textContent = 'Error: "To Date" cannot be before "From Date".';
+            responseMessageDiv.className = 'message error';
+            responseMessageDiv.style.display = 'block';
+            return;
+        }
+
+        const formData = new FormData(this);
+        const data = Object.fromEntries(formData.entries());
+        responseMessageDiv.style.display = 'none';
+
+        try {
+            const response = await fetch('/api/wfh-requests', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify(data)
+            });
+            const result = await response.json();
+
+            if (response.ok) {
+                responseMessageDiv.textContent = result.message;
+                responseMessageDiv.className = 'message success';
+                this.reset();
+                loadUserDetails(); // Re-populate readonly fields
+                document.getElementById('from_date').setAttribute('min', today);
+                document.getElementById('to_date').setAttribute('min', today);
+            } else {
+                throw new Error(result.message || 'Failed to submit request.');
+            }
+        } catch (error) {
+            responseMessageDiv.textContent = `Error: ${error.message}`;
+            responseMessageDiv.className = 'message error';
+        }
+        responseMessageDiv.style.display = 'block';
+    });
+
+    loadUserDetails();
+})();
+</script>

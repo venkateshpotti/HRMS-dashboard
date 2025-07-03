@@ -1,0 +1,169 @@
+<style>
+    /* Scoped CSS for the Payslip partial */
+    .payslip-page-wrapper { font-family: Arial, sans-serif; }
+
+    .payslip-header {
+      position: relative;
+      text-align: center;
+      height: 120px; 
+      background-color: #5f06a8;
+      color: #fff;
+      border-radius: 15px;
+      overflow: hidden;
+      display: flex;
+      width: 100%;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+      margin-bottom: 2rem;
+    }
+    .dark-mode .payslip-header { background-color: #2a044a; }
+    .payslip-header h1 { margin: 0; font-size: 36px; font-weight: 600; }
+    .payslip-header p { font-weight: 100; font-size: 18px; margin-top: 10px; }
+  
+    .payslip-container {
+        background: var(--body-bg);
+        width: 100%;
+        max-width: 600px;
+        padding: 2rem;
+        border-radius: 10px;
+        margin: 0 auto;
+        box-shadow: 0 4px 6px var(--shadow-color);
+        border: 1px solid var(--border-color);
+    }
+    .payslip-container h2 {
+        font-size: 24px;
+        margin-bottom: 24px;
+        color: var(--text-color);
+    }
+    .payslip-container .input-group { margin-bottom: 16px; text-align: left; }
+    .payslip-container .input-group label { font-size: 14px; margin-bottom: 8px; color: var(--text-color); }
+    .payslip-container .input-group input {
+        width: 100%;
+        padding: 10px;
+        font-size: 14px;
+        border-radius: 5px;
+        background-color: var(--sidebar-bg);
+        color: var(--text-color);
+        border: 1px solid var(--border-color);
+    }
+     .payslip-container .input-group input:read-only {
+        background-color: var(--nav-link-hover-bg);
+    }
+    .payslip-container .btn {
+        display: block; width: 100%; padding: 12px; background-color: #0d6efd; color: white; border: none;
+        border-radius: 4px; cursor: pointer; font-size: 1.1rem; font-weight: bold;
+    }
+</style>
+
+<div class="payslip-page-wrapper">
+    <header class="payslip-header">
+        <h1>Payslip Generator</h1>
+        <p>Request your payslip details here</p>
+    </header>
+    <div class="payslip-container">
+        <h2>Employee Details & Verification</h2>
+        <form id="payslipForm">
+            <div class="input-group">
+                <label for="employeeName">Employee Name</label>
+                <input id="employeeName" type="text" readonly>
+            </div>
+            <div class="input-group">
+                <label for="employeeId">Employee ID</label>
+                <input id="employeeId" type="text" readonly>
+            </div>
+            <div class="input-group">
+                <label for="email">Email Address</label>
+                <input id="email" type="email" readonly>
+            </div>
+            <hr class="my-4">
+            <div class="input-group">
+                <label for="password">Enter Your Password to Verify</label>
+                <input id="password" type="password" placeholder="Password required for verification" required>
+            </div>
+            <div class="input-group">
+                <label for="startMonth">Select Start Month:</label>
+                <input type="month" id="startMonth" name="startMonth" class="form-control" required>
+            </div>
+            <div class="input-group">
+                <label for="endMonth">Select End Month (optional):</label>
+                <input type="month" id="endMonth" name="endMonth" class="form-control">
+            </div>
+            <button type="submit" class="btn">Submit for Approval</button>
+        </form>
+        <p id="form-message" style="margin-top: 15px; font-weight: bold; word-wrap: break-word;"></p>
+    </div>
+</div>
+
+<script>
+(function() {
+    const token = localStorage.getItem('token');
+    if (!token) { window.location.href = '/login'; return; }
+
+    const form = document.getElementById("payslipForm");
+    const messageEl = document.getElementById("form-message");
+    const nameInput = document.getElementById('employeeName');
+    const idInput = document.getElementById('employeeId');
+    const emailInput = document.getElementById('email');
+
+    // Pre-fill user data
+    const loadUserDetails = async () => {
+        try {
+            const response = await fetch('/api/user/me', { headers: { 'Authorization': `Bearer ${token}` } });
+            if (!response.ok) throw new Error('Could not fetch user details.');
+            const user = await response.json();
+            nameInput.value = user.username;
+            idInput.value = user.employee_id;
+            emailInput.value = user.email;
+        } catch (error) {
+            messageEl.textContent = '❌ ' + error.message;
+            messageEl.style.color = 'red';
+        }
+    };
+
+    form.addEventListener("submit", async function (event) {
+        event.preventDefault(); 
+        const submitButton = form.querySelector('button[type="submit"]');
+        submitButton.disabled = true;
+        messageEl.textContent = 'Submitting...';
+        messageEl.style.color = 'blue';
+
+        const formData = {
+            employeeName: nameInput.value,
+            employeeId: idInput.value,
+            email: emailInput.value,
+            password: document.getElementById('password').value,
+            startMonth: document.getElementById('startMonth').value,
+            endMonth: document.getElementById('endMonth').value || null
+        };
+        
+        try {
+            const response = await fetch('/api/payslip', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify(formData),
+            });
+            const result = await response.json();
+
+            if (response.ok) {
+                messageEl.textContent = "✅ " + result.message;
+                messageEl.style.color = 'green';
+                form.reset();
+                loadUserDetails(); // Re-fill user data after reset
+            } else {
+                messageEl.innerHTML = `❌ ${result.error || 'An error occurred.'}`;
+                messageEl.style.color = 'red';
+            }
+        } catch (error) {
+            messageEl.textContent = '❌ A network error occurred. Is the server running?';
+            messageEl.style.color = 'red';
+        } finally {
+            submitButton.disabled = false;
+        }
+    });
+
+    // Load user details when the page loads
+    loadUserDetails();
+})();
+</script>

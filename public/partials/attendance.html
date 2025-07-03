@@ -1,0 +1,173 @@
+<style>
+    /* Scoped styles for the attendance partial */
+    .attendance-container { max-width: 900px; margin: 0 auto; }
+    .attendance-container h2 { text-align: center; color: var(--text-color); margin-bottom: 30px; }
+    .attendance-container .card {
+        background: var(--body-bg);
+        border: 1px solid var(--border-color);
+        color: var(--text-color);
+    }
+    .attendance-container .form-control {
+        background-color: var(--sidebar-bg);
+        color: var(--text-color);
+        border: 1px solid var(--border-color);
+    }
+    .attendance-container .form-control:read-only {
+        background-color: var(--nav-link-hover-bg);
+    }
+    .table { color: var(--text-color); }
+    .dark-mode .table-striped>tbody>tr:nth-of-type(odd)>* {
+        --bs-table-accent-bg: rgba(255, 255, 255, 0.05); /* Darker stripe for dark mode */
+    }
+</style>
+
+<div class="attendance-container">
+    <h2>Your Daily Punch In/Out</h2>
+    <div class="card shadow-sm p-4 mb-4">
+        <form id="punchForm" class="row g-3">
+            <div class="col-md-6">
+                <label for="employeeIdDisplay" class="form-label">Employee ID</label>
+                <input type="text" class="form-control" id="employeeIdDisplay" readonly>
+            </div>
+            <div class="col-md-6">
+                <label for="emailDisplay" class="form-label">Your Email</label>
+                <input type="email" class="form-control" id="emailDisplay" readonly>
+            </div>
+            <div class="col-12">
+                <label for="sessionPassword" class="form-label">Session Password</label>
+                <input type="password" class="form-control" id="sessionPassword" required placeholder="Enter password to punch in or out">
+            </div>
+            <div class="col-12 text-center mt-4">
+                <button type="submit" class="btn btn-primary">Punch In/Out</button>
+                <p id="punchStatus" class="mt-2 fw-bold">Checking Status...</p>
+            </div>
+        </form>
+    </div>
+    <div class="card shadow-sm p-4">
+        <h3>Your Attendance History <button type="button" class="btn btn-secondary btn-sm float-end" id="refreshHistoryBtn">Refresh</button></h3>
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead><tr><th>Record ID</th><th>Punch In</th><th>Punch Out</th><th>Duration</th><th>Status</th></tr></thead>
+                <tbody id="attendanceTable"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    const token = localStorage.getItem('token');
+    if (!token) { window.location.href = '/login'; return; }
+
+    const employeeIdDisplay = document.getElementById('employeeIdDisplay');
+    const emailDisplay = document.getElementById('emailDisplay');
+    const punchForm = document.getElementById('punchForm');
+    const attendanceTable = document.getElementById('attendanceTable');
+    const punchStatus = document.getElementById('punchStatus');
+    const refreshBtn = document.getElementById('refreshHistoryBtn');
+    const sessionPasswordInput = document.getElementById('sessionPassword');
+
+    const loadAttendanceStatus = async () => {
+        const employeeId = employeeIdDisplay.value;
+        if (!employeeId) return;
+        try {
+            const response = await fetch(`/api/status/${employeeId}`, { headers: { 'Authorization': `Bearer ${token}` } });
+            if (!response.ok) throw new Error('Could not check status');
+            const data = await response.json();
+            punchStatus.textContent = data.punchedIn ? 'Status: Punched In' : 'Status: Punched Out';
+            punchStatus.style.color = data.punchedIn ? 'green' : 'red';
+        } catch(err) {
+            punchStatus.textContent = 'Error checking status.';
+            punchStatus.style.color = 'orange';
+        }
+    };
+
+    const refreshHistory = async () => {
+        attendanceTable.innerHTML = '<tr><td colspan="5">Loading history...</td></tr>';
+        try {
+            const response = await fetch('/api/my-attendance', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (response.status === 401 || response.status === 403) {
+                alert('Your session has expired. Please log in again.');
+                localStorage.clear();
+                window.location.href = '/login';
+                return;
+            }
+            if (!response.ok) throw new Error(`Server responded with status: ${response.status}`);
+            
+            const data = await response.json();
+
+            if (data.length === 0) {
+                 attendanceTable.innerHTML = '<tr><td colspan="5" class="text-center">No attendance history found.</td></tr>';
+                 return;
+            }
+            
+            attendanceTable.innerHTML = data.map(a => `
+                <tr>
+                    <td>${a.id}</td>
+                    <td>${new Date(a.punch_in_time).toLocaleString()}</td>
+                    <td>${a.punch_out_time ? new Date(a.punch_out_time).toLocaleString() : '-'}</td>
+                    <td>${a.punch_out_time ? ((new Date(a.punch_out_time) - new Date(a.punch_in_time)) / 3600000).toFixed(2) + ' hours' : '-'}</td>
+                    <td><span class="badge bg-${a.status === 'PUNCH_IN' ? 'success' : 'secondary'}">${a.status.replace('_', ' ')}</span></td>
+                </tr>
+            `).join('');
+        } catch (err) {
+             console.error("Error in refreshHistory:", err);
+             attendanceTable.innerHTML = `<tr><td colspan="5" class="text-center text-danger">Error loading history: ${err.message}</td></tr>`;
+        }
+    };
+    
+    const loadUserDetails = async () => {
+        try {
+            const response = await fetch('/api/user/me', { headers: { 'Authorization': `Bearer ${token}` } });
+            if (!response.ok) throw new Error('Could not fetch user details.');
+            const user = await response.json();
+            employeeIdDisplay.value = user.employee_id;
+            emailDisplay.value = user.email;
+            // Now that user details are loaded, fetch status and history
+            loadAttendanceStatus();
+            refreshHistory();
+        } catch (error) {
+            punchStatus.textContent = "Error loading user data.";
+            punchStatus.style.color = "red";
+        }
+    };
+
+    punchForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const password = sessionPasswordInput.value;
+        const employeeId = employeeIdDisplay.value;
+        if (!password || !employeeId) {
+            alert('Password and Employee ID are required.');
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/punch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ employeeId, password })
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.message || 'An unknown error occurred.');
+            
+            alert(data.message);
+            sessionPasswordInput.value = '';
+            // Refresh UI state
+            loadAttendanceStatus();
+            refreshHistory();
+        } catch (error) {
+            alert(`Error: ${error.message}`);
+        }
+    });
+
+    refreshBtn.addEventListener('click', () => {
+        refreshHistory();
+        loadAttendanceStatus();
+    });
+
+    // Initial load starts here
+    loadUserDetails();
+})();
+</script>

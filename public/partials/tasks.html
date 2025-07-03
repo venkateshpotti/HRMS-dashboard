@@ -1,0 +1,174 @@
+<!-- This file replaces the old tasks.html and is adapted from your new index.html -->
+<style>
+    /* Scoped styles for this partial */
+    .tasks-page-wrapper {
+        max-width: 700px;
+        margin: 0 auto;
+    }
+
+    .tasks-page-wrapper .panel {
+        background: var(--header-bg); /* Uses dashboard theme variable */
+        border-radius: 15px;
+        box-shadow: 0 5px 15px var(--shadow-color); /* Uses dashboard theme variable */
+        padding: 1.5rem;
+    }
+    
+    .tasks-page-wrapper .panel-header {
+        margin-bottom: 1.5rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid var(--border-color); /* Uses dashboard theme variable */
+    }
+    
+    .tasks-page-wrapper .panel-title {
+        margin: 0; font-size: 1.5rem; font-weight: 600; color: #3a0098;
+    }
+    .dark-mode .tasks-page-wrapper .panel-title { color: #9d78ec; } /* Dark mode title color */
+    
+    .tasks-page-wrapper .form-group { margin-bottom: 1rem; }
+    
+    .tasks-page-wrapper .form-label {
+        display: block; margin-bottom: 0.5rem; font-weight: 500; color: var(--text-color);
+    }
+    
+    .tasks-page-wrapper .form-control {
+        width: 100%; padding: 0.8rem 1rem; border: 1px solid var(--border-color);
+        background-color: var(--body-bg); /* Uses dashboard theme variable */
+        color: var(--text-color); /* Uses dashboard theme variable */
+        border-radius: 8px; font-size: 1rem; transition: border 0.3s;
+    }
+    
+    .tasks-page-wrapper .form-control:focus { outline: none; border-color: #150389; }
+    .dark-mode .tasks-page-wrapper .form-control:focus { border-color: #a970ff; }
+
+    .tasks-page-wrapper .form-control:read-only {
+        background-color: var(--nav-link-hover-bg);
+    }
+    
+    .tasks-page-wrapper .btn {
+        display: block; width: 100%; padding: 0.8rem 1.5rem;
+        background: linear-gradient(135deg, #2724d8 0%, #509ebb 100%);
+        color: white; border: none; border-radius: 8px; font-size: 1rem;
+        font-weight: 500; cursor: pointer; transition: all 0.3s;
+    }
+</style>
+
+<div class="tasks-page-wrapper">
+    <div class="panel">
+        <div class="panel-header">
+            <h2 class="panel-title">Submit Your Work</h2>
+        </div>
+        
+        <form id="workUpdateForm">
+            <div class="form-group">
+                <label for="task-name" class="form-label">Work Item Name</label>
+                <input type="text" id="task-name" class="form-control" name="task-name" required placeholder="Enter the name of the work item or task">
+            </div>
+            
+            <div class="form-group">
+                <label for="employee-name" class="form-label">Employee Name</label>
+                <!-- FIX: Field is now readonly and will be auto-filled -->
+                <input type="text" id="employee-name" class="form-control" required readonly>
+            </div>
+            
+            <div class="form-group">
+                <label for="employee-id" class="form-label">Employee ID</label>
+                <!-- FIX: Field is now readonly and will be auto-filled -->
+                <input type="text" id="employee-id" class="form-control" name="employee-id" required readonly>
+            </div>
+            
+            <div class="form-group">
+                <label for="upload-doc" class="form-label">Upload Document</label>
+                <input type="file" id="upload-doc" class="form-control" name="upload-doc" required accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.txt">
+            </div>
+            
+            <div class="form-group">
+                <label for="task-status" class="form-label">Work Status</label>
+                <select id="task-status" class="form-control form-select" name="task-status" required>
+                    <option value="" disabled selected>-- Select Status --</option>
+                    <option value="completed">Completed</option>
+                    <option value="inprocess">In Progress</option>
+                </select>
+            </div>
+            
+            <button type="submit" class="btn">Submit Work Update</button>
+        </form>
+    </div>
+</div>
+    
+<script>
+(function() {
+    // FIX: Integrate with dashboard's authentication system
+    const token = localStorage.getItem('token');
+    if (!token) {
+        window.location.href = '/login';
+        return;
+    }
+
+    const workUpdateForm = document.getElementById('workUpdateForm');
+    const nameInput = document.getElementById('employee-name');
+    const idInput = document.getElementById('employee-id');
+
+    // FIX: Function to auto-fill user details from the server
+    const loadUserDetails = async () => {
+        try {
+            const response = await fetch('/api/user/me', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!response.ok) throw new Error('Could not fetch user details.');
+            const user = await response.json();
+            nameInput.value = user.username;
+            idInput.value = user.employee_id;
+        } catch (error) {
+            console.error(error);
+            alert('Failed to load user details. Please try refreshing.');
+        }
+    };
+    
+    workUpdateForm.addEventListener('submit', async function(event) {
+        event.preventDefault();
+
+        // Basic check for file upload
+        if (document.getElementById('upload-doc').files.length === 0) {
+            alert('Please select a file to upload.');
+            return;
+        }
+
+        const taskData = {
+            taskName: document.getElementById('task-name').value,
+            employeeName: nameInput.value,
+            employeeId: idInput.value,
+            uploadDoc: document.getElementById('upload-doc').files[0].name,
+            taskStatus: document.getElementById('task-status').value,
+        };
+        
+        try {
+            // FIX: Use relative API path and send authorization token
+            const response = await fetch('/api/submit', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify(taskData)
+            });
+            
+            const result = await response.json();
+            if (!response.ok) {
+                // Show specific error from server if available
+                throw new Error(result.error || 'Submission failed');
+            }
+
+            alert(result.message);
+            workUpdateForm.reset();
+            loadUserDetails(); // Re-populate the readonly fields after reset
+
+        } catch(error) {
+            console.error('Error submitting work:', error);
+            alert('Error: ' + error.message);
+        }
+    });
+
+    // Initial load of user details when the partial is loaded
+    loadUserDetails();
+})();
+</script>

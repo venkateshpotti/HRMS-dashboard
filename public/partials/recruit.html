@@ -1,0 +1,136 @@
+<style>
+    /* Scoped styles that use the dashboard's CSS variables for theming */
+    :root {
+        --primary-blue: #0d6efd;
+    }
+    .recruit-form-container {
+        background-color: var(--header-bg); /* Use theme variable */
+        border-radius: 8px;
+        width: 100%;
+        max-width: 800px; /* Wider for a better form layout */
+        margin: 0 auto;
+        overflow: hidden;
+    }
+    .recruit-header { background-color: var(--primary-blue); color: #ffffff; padding: 20px 30px; }
+    .recruit-header h1 { margin: 0; font-size: 24px; }
+    .recruit-header p { margin: 5px 0 0; opacity: 0.9; }
+    .recruit-job-form { padding: 30px; }
+    .recruit-job-form .form-group { margin-bottom: 20px; }
+    .recruit-job-form label { display: block; margin-bottom: 8px; font-weight: 600; color: var(--text-color); }
+    .recruit-job-form label .required { color: #dc3545; margin-left: 2px; }
+    .recruit-job-form .hint { font-size: 12px; color: var(--text-color); opacity: 0.7; margin-top: 4px; }
+    .recruit-job-form .form-control {
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid var(--border-color);
+        background-color: var(--body-bg); /* Use theme variable */
+        color: var(--text-color); /* Use theme variable */
+        border-radius: 6px;
+        font-size: 16px;
+        box-sizing: border-box;
+        transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .recruit-job-form .form-control:focus { outline: none; border-color: var(--primary-blue); box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.25); }
+    .recruit-job-form textarea.form-control { resize: vertical; min-height: 120px; }
+    .recruit-job-form .submit-btn { background-color: var(--primary-blue); color: #ffffff; border: none; padding: 12px 20px; font-size: 16px; font-weight: 600; border-radius: 6px; cursor: pointer; width: 100%; transition: background-color 0.2s; }
+    .recruit-job-form .submit-btn:hover { background-color: #0b5ed7; }
+</style>
+
+<div class="recruit-form-container">
+    <div class="recruit-header">
+        <h1>Post Your Dream Job</h1>
+        <p>Connect with top talent by creating a compelling job listing</p>
+    </div>
+    <form id="job-form" class="recruit-job-form">
+        <div class="form-group">
+            <label for="job-title">Job Title<span class="required">*</span></label>
+            <input type="text" id="job-title" class="form-control" required>
+        </div>
+        <div class="form-group">
+            <label for="job-description">Job Description<span class="required">*</span></label>
+            <textarea id="job-description" class="form-control" required></textarea>
+        </div>
+        <div class="form-group">
+            <label for="required-skills">Required Skills<span class="required">*</span></label>
+            <input type="text" id="required-skills" class="form-control" placeholder="e.g., JavaScript, Python, Project Management" required>
+            <p class="hint">Separate multiple skills with commas</p>
+        </div>
+        <div class="form-group">
+            <label for="required-experience">Required Experience<span class="required">*</span></label>
+            <input type="text" id="required-experience" class="form-control" placeholder="e.g., 2+ years" required>
+        </div>
+        <div class="form-group">
+            <label for="job-type">Job Type<span class="required">*</span></label>
+            <select id="job-type" class="form-control" required>
+                <option value="" disabled selected>Select job type</option>
+                <option value="Full-time">Full-time</option>
+                <option value="Part-time">Part-time</option>
+                <option value="Contract">Contract</option>
+                <option value="Internship">Internship</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="location">Location<span class="required">*</span></label>
+            <input type="text" id="location" class="form-control" placeholder="e.g., New York, NY or Remote" required>
+        </div>
+        <div class="form-group">
+            <label for="salary-range">Salary Range<span class="required">*</span></label>
+            <input type="text" id="salary-range" class="form-control" placeholder="e.g., $80,000 - $100,000" required>
+        </div>
+        <div class="form-group">
+            <label for="application-deadline">Application Deadline<span class="required">*</span></label>
+            <input type="date" id="application-deadline" class="form-control" required>
+        </div>
+        <button type="submit" class="submit-btn">Post Job</button>
+    </form>
+</div>
+
+<script>
+(function() {
+    const token = localStorage.getItem('token');
+    if (!token) { window.location.href = '/login'; return; }
+
+    const jobForm = document.getElementById('job-form');
+    if (!jobForm) return;
+
+    jobForm.addEventListener('submit', async function(event) {
+        event.preventDefault();
+
+        const jobData = {
+            jobTitle: document.getElementById('job-title').value,
+            jobDescription: document.getElementById('job-description').value,
+            requiredSkills: document.getElementById('required-skills').value,
+            requiredExperience: document.getElementById('required-experience').value,
+            jobType: document.getElementById('job-type').value,
+            location: document.getElementById('location').value,
+            salaryRange: document.getElementById('salary-range').value,
+            applicationDeadline: document.getElementById('application-deadline').value,
+        };
+
+        try {
+            const response = await fetch('/api/jobs', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}` // Added authentication token
+                },
+                body: JSON.stringify(jobData),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Failed to post job');
+            }
+
+            const result = await response.json();
+            console.log('Job posted successfully:', result);
+            alert('Job has been posted successfully!');
+            jobForm.reset();
+
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error: ' + error.message);
+        }
+    });
+})();
+</script>

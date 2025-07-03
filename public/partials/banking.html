@@ -1,0 +1,151 @@
+<style>
+    .banking-container { max-width: 800px; margin: 0 auto; }
+    .banking-container h2 { text-align: center; color: var(--text-color); margin-bottom: 30px; }
+    .banking-container .card {
+        background: var(--body-bg);
+        border: 1px solid var(--border-color);
+        color: var(--text-color);
+    }
+    .banking-container .form-control {
+        background-color: var(--sidebar-bg);
+        color: var(--text-color);
+        border: 1px solid var(--border-color);
+    }
+    .banking-container .form-control:read-only {
+        background-color: var(--nav-link-hover-bg);
+    }
+    .banking-container .form-label { font-weight: 500; }
+</style>
+
+<div class="banking-container">
+    <h2>Your Banking Details</h2>
+    <p class="text-center text-muted mb-4">This information is used for salary processing. Please ensure it is accurate.</p>
+
+    <div class="card shadow-sm p-4">
+        <form id="bankingForm">
+            <div id="form-message" class="alert" style="display: none;"></div>
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label for="accountHolderName" class="form-label">Account Holder Name</label>
+                    <input type="text" class="form-control" id="accountHolderName" readonly>
+                </div>
+                <div class="col-md-6">
+                    <label for="employeeId" class="form-label">Employee ID</label>
+                    <input type="text" class="form-control" id="employeeId" readonly>
+                </div>
+
+                <hr class="my-4">
+
+                <div class="col-md-6">
+                    <label for="bankName" class="form-label">Bank Name</label>
+                    <input type="text" class="form-control" id="bankName" required placeholder="e.g., State Bank of India">
+                </div>
+                <div class="col-md-6">
+                    <label for="accountNumber" class="form-label">Account Number</label>
+                    <input type="text" class="form-control" id="accountNumber" required placeholder="Enter your full account number">
+                </div>
+                <div class="col-md-6">
+                    <label for="ifscCode" class="form-label">IFSC Code</label>
+                    <input type="text" class="form-control" id="ifscCode" required placeholder="e.g., SBIN0001234">
+                </div>
+                <div class="col-md-6">
+                    <label for="accountType" class="form-label">Account Type</label>
+                    <select id="accountType" class="form-select" required>
+                        <option value="" disabled selected>Choose...</option>
+                        <option value="Savings">Savings</option>
+                        <option value="Current">Current</option>
+                    </select>
+                </div>
+                <div class="col-12 text-center mt-4">
+                    <button type="submit" class="btn btn-primary btn-lg">Save/Update Details</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+(function() {
+    const token = localStorage.getItem('token');
+    if (!token) { window.location.href = '/login'; return; }
+
+    // Form elements
+    const bankingForm = document.getElementById('bankingForm');
+    const messageDiv = document.getElementById('form-message');
+    const accountHolderNameInput = document.getElementById('accountHolderName');
+    const employeeIdInput = document.getElementById('employeeId');
+    const bankNameInput = document.getElementById('bankName');
+    const accountNumberInput = document.getElementById('accountNumber');
+    const ifscCodeInput = document.getElementById('ifscCode');
+    const accountTypeInput = document.getElementById('accountType');
+    
+    // Function to show feedback messages
+    const showMessage = (message, isSuccess) => {
+        messageDiv.textContent = message;
+        messageDiv.className = `alert ${isSuccess ? 'alert-success' : 'alert-danger'}`;
+        messageDiv.style.display = 'block';
+    };
+
+    // Load user's personal and banking details
+    const loadDetails = async () => {
+        try {
+            // 1. Fetch user's name and ID
+            const userResponse = await fetch('/api/user/me', { headers: { 'Authorization': `Bearer ${token}` } });
+            if (!userResponse.ok) throw new Error('Could not fetch user details.');
+            const user = await userResponse.json();
+            accountHolderNameInput.value = user.username;
+            employeeIdInput.value = user.employee_id;
+
+            // 2. Fetch user's banking details
+            const bankingResponse = await fetch('/api/banking-details', { headers: { 'Authorization': `Bearer ${token}` } });
+            if (!bankingResponse.ok) throw new Error('Could not fetch banking details.');
+            const bankingDetails = await bankingResponse.json();
+
+            // 3. Populate form if details exist
+            if (bankingDetails.bank_name) {
+                bankNameInput.value = bankingDetails.bank_name;
+                accountNumberInput.value = bankingDetails.account_number;
+                ifscCodeInput.value = bankingDetails.ifsc_code;
+                accountTypeInput.value = bankingDetails.account_type;
+            }
+        } catch (error) {
+            showMessage(error.message, false);
+        }
+    };
+
+    // Handle form submission
+    bankingForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const dataToSubmit = {
+            employee_id: employeeIdInput.value,
+            account_holder_name: accountHolderNameInput.value,
+            bank_name: bankNameInput.value,
+            account_number: accountNumberInput.value,
+            ifsc_code: ifscCodeInput.value.toUpperCase(),
+            account_type: accountTypeInput.value,
+        };
+
+        try {
+            const response = await fetch('/api/banking-details', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify(dataToSubmit)
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.message);
+
+            showMessage(result.message, true);
+
+        } catch (error) {
+            showMessage(error.message, false);
+        }
+    });
+
+    // Initial load of all details
+    loadDetails();
+})();
+</script>

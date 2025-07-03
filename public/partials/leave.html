@@ -1,0 +1,112 @@
+<style>
+    .leave-page-wrapper { font-family: 'Public Sans', sans-serif; background-color: transparent; }
+    .leave-header { text-align: center; background: #5f06a8; color: #fff; border-radius: 1rem; padding: 2rem; margin-bottom: 2rem; }
+    .leave-page-wrapper .card { background-color: var(--body-bg) !important; border: 1px solid var(--border-color) !important; color: var(--text-color) !important; transition: background-color 0.3s, border-color 0.3s; }
+    .leave-page-wrapper .card .form-control, .leave-page-wrapper .card .form-select { background-color: var(--sidebar-bg) !important; color: var(--text-color) !important; border-color: var(--border-color) !important; }
+    .leave-page-wrapper .card .form-control:focus, .leave-page-wrapper .card .form-select:focus { border-color: #86b7fe; box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25); }
+    .popup-card { position: fixed; top: 80px; right: -400px; z-index: 1050; transition: right 0.5s ease; }
+    .popup-card.show { right: 20px; }
+</style>
+
+<div class="leave-page-wrapper">
+    <header class="leave-header"><h1>Employee Leave Form</h1><p>Apply for your leave and track its status here</p></header>
+    <div class="row g-4">
+        <div class="col-lg-7">
+            <div class="card shadow-sm p-4 h-100">
+                <h2 class="text-center mb-4"><i class="bi bi-send"></i> Apply for Leave</h2>
+                <form class="row g-3" id="leave-form">
+                    <div class="col-md-6"><label for="name" class="form-label">Employee Name</label><input type="text" id="name" class="form-control" required readonly></div>
+                    <div class="col-md-6"><label for="emp-id" class="form-label">Employee ID</label><input type="text" id="emp-id" class="form-control" required readonly></div>
+                    <div class="col-12"><label for="email" class="form-label">Contact Email</label><input id="email" type="email" class="form-control" placeholder="Enter your contact email" required readonly></div>
+                    <div class="col-md-4"><label for="leave-type" class="form-label">Leave Type</label><select id="leave-type" class="form-select" required><option selected disabled value="">Choose...</option><option>Sick Leave</option><option>Casual Leave</option><option>Earned Leave</option></select></div>
+                    <div class="col-md-4"><label for="from-date" class="form-label">From Date</label><input type="date" id="from-date" class="form-control" required></div>
+                    <div class="col-md-4"><label for="to-date" class="form-label">To Date</label><input type="date" id="to-date" class="form-control" required></div>
+                    <div class="col-12"><label for="reason" class="form-label">Reason</label><textarea id="reason" class="form-control" required minlength="5" maxlength="100" rows="3"></textarea></div>
+                    <div class="col-12 text-center mt-3"><button type="submit" class="btn btn-lg btn-primary">Submit Request</button></div>
+                </form>
+            </div>
+        </div>
+        <div class="col-lg-5">
+            <div class="card shadow-sm p-4 h-100">
+                <h2 class="mb-4"><i class="bi bi-clock-history"></i> Your Leave History</h2>
+                <div id="leave-cards" class="d-flex flex-column gap-3" style="max-height: 520px; overflow-y: auto; padding-right: 10px;"></div>
+            </div>
+        </div>
+    </div>
+    <div id="popup-card" class="popup-card alert"></div>
+</div>
+<script>
+(function() {
+    const token = localStorage.getItem('token');
+    if (!token) { window.location.href = '/login'; return; }
+    const leaveForm = document.getElementById('leave-form');
+    if (!leaveForm) return;
+    const nameInput = document.getElementById('name');
+    const empIdInput = document.getElementById('emp-id');
+    const emailInput = document.getElementById('email');
+    const leaveCards = document.getElementById('leave-cards');
+    const popup = document.getElementById('popup-card');
+
+    const showPopup = (message, isSuccess) => {
+        popup.textContent = message;
+        popup.className = `popup-card alert ${isSuccess ? 'alert-success' : 'alert-danger'} show`;
+        setTimeout(() => popup.classList.remove('show'), 4000);
+    };
+
+    const fetchLeaves = async (employeeId) => {
+        try {
+            leaveCards.innerHTML = '<p class="text-muted">Loading your history...</p>';
+            const res = await fetch(`/api/leaves/${employeeId}`, { headers: { 'Authorization': `Bearer ${token}` } });
+            if (!res.ok) {
+                const errorData = await res.json();
+                throw new Error(errorData.message || 'Failed to fetch history');
+            }
+            const leaves = await res.json();
+            if (leaves.length === 0) { leaveCards.innerHTML = '<p class="text-muted">You have no leave history.</p>'; return; }
+            leaveCards.innerHTML = leaves.map(l => {
+                let statusClass = 'warning';
+                if (l.status.toLowerCase() === 'approved') statusClass = 'success';
+                if (l.status.toLowerCase() === 'denied') statusClass = 'danger';
+                return `<div class="card" style="background-color: var(--sidebar-bg) !important;"><div class="card-body p-2"><h6 class="card-title mb-1">${l.leave_type} <span class="badge bg-${statusClass} float-end">${l.status}</span></h6><p class="card-text small mb-1"><strong>Period:</strong> ${new Date(l.from_date).toLocaleDateString()} - ${new Date(l.to_date).toLocaleDateString()}</p><p class="card-text small text-muted">${l.reason}</p></div></div>`;
+            }).join('');
+        } catch (err) { leaveCards.innerHTML = `<p class="text-danger">${err.message}</p>`; }
+    };
+    
+    const loadUserDetailsAndLeaves = async () => {
+        try {
+            const response = await fetch('/api/user/me', { headers: { 'Authorization': `Bearer ${token}` } });
+            if (!response.ok) throw new Error('Failed to fetch user details');
+            const user = await response.json();
+            nameInput.value = user.username;
+            empIdInput.value = user.employee_id;
+            emailInput.value = user.email;
+            fetchLeaves(user.employee_id);
+        } catch (error) { 
+            showPopup(error.message, false);
+        }
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        const fromDate = document.getElementById('from-date').value;
+        const toDate = document.getElementById('to-date').value;
+        if (new Date(toDate) < new Date(fromDate)) { showPopup("'To Date' cannot be before 'From Date'.", false); return; }
+        const formData = { employee_name: nameInput.value, employee_id: empIdInput.value, email: emailInput.value, leave_type: document.getElementById('leave-type').value, from_date: fromDate, to_date: toDate, reason: document.getElementById('reason').value };
+        try {
+            const res = await fetch('/api/leaves', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify(formData)
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message);
+            showPopup(data.message, true);
+            e.target.reset();
+            fetchLeaves(empIdInput.value); // Just refresh history, no need to reload everything
+        } catch (err) { showPopup(err.message, false); }
+    };
+    
+    loadUserDetailsAndLeaves();
+    leaveForm.addEventListener('submit', handleSubmit);
+})();
+</script>

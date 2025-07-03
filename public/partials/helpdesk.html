@@ -1,0 +1,182 @@
+<style>
+    .helpdesk-container .card {
+        background-color: var(--body-bg);
+        border: 1px solid var(--border-color);
+        color: var(--text-color);
+    }
+    .helpdesk-container .form-control, .helpdesk-container .form-select {
+        background-color: var(--sidebar-bg);
+        color: var(--text-color);
+        border: 1px solid var(--border-color);
+    }
+    .helpdesk-container .form-label {
+        font-weight: 500;
+    }
+    #ticket-history {
+        max-height: 550px;
+        overflow-y: auto;
+    }
+    .ticket-card {
+        border-left-width: 4px;
+        transition: all 0.2s ease-in-out;
+    }
+    .ticket-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px var(--shadow-color);
+    }
+</style>
+
+<div class="helpdesk-container">
+    <h2 class="text-center mb-4">Help Desk & Support</h2>
+    <div class="row g-4">
+        <!-- Column for creating a new ticket -->
+        <div class="col-lg-5">
+            <div class="card p-4 h-100 shadow-sm">
+                <h4 class="mb-3">Create a New Ticket</h4>
+                <form id="helpDeskForm">
+                    <div id="form-message" class="alert" style="display: none;"></div>
+                    <div class="mb-3">
+                        <label for="category" class="form-label">Category</label>
+                        <select id="category" class="form-select" required>
+                            <option value="" disabled selected>Select a category...</option>
+                            <option value="IT Support">IT Support</option>
+                            <option value="HR Query">HR Query</option>
+                            <option value="Payroll Issue">Payroll Issue</option>
+                            <option value="General">General</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="priority" class="form-label">Priority</label>
+                        <select id="priority" class="form-select" required>
+                            <option value="" disabled selected>Select a priority...</option>
+                            <option value="Low">Low</option>
+                            <option value="Medium">Medium</option>
+                            <option value="High">High</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="subject" class="form-label">Subject</label>
+                        <input type="text" id="subject" class="form-control" required placeholder="A brief summary of your issue">
+                    </div>
+                    <div class="mb-3">
+                        <label for="description" class="form-label">Description</label>
+                        <textarea id="description" class="form-control" rows="4" required placeholder="Please provide a detailed description..."></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Submit Ticket</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Column for viewing ticket history -->
+        <div class="col-lg-7">
+            <div class="card p-4 h-100 shadow-sm">
+                <h4 class="mb-3">Your Ticket History</h4>
+                <div id="ticket-history" class="d-flex flex-column gap-3">
+                    <p class="text-muted">Loading your tickets...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    const token = localStorage.getItem('token');
+    if (!token) { window.location.href = '/login'; return; }
+
+    const helpDeskForm = document.getElementById('helpDeskForm');
+    const messageDiv = document.getElementById('form-message');
+    const ticketHistoryDiv = document.getElementById('ticket-history');
+
+    const showMessage = (message, isSuccess) => {
+        messageDiv.textContent = message;
+        messageDiv.className = `alert ${isSuccess ? 'alert-success' : 'alert-danger'}`;
+        messageDiv.style.display = 'block';
+    };
+
+    const getStatusBadge = (status) => {
+        switch (status.toLowerCase()) {
+            case 'open': return 'bg-success';
+            case 'in progress': return 'bg-warning text-dark';
+            case 'closed': return 'bg-secondary';
+            default: return 'bg-info';
+        }
+    };
+    
+    const getPriorityBorder = (priority) => {
+        switch (priority.toLowerCase()) {
+            case 'high': return 'border-danger';
+            case 'medium': return 'border-warning';
+            case 'low': return 'border-primary';
+            default: return 'border-secondary';
+        }
+    };
+
+    const loadTickets = async () => {
+        ticketHistoryDiv.innerHTML = '<p class="text-muted">Loading your tickets...</p>';
+        try {
+            const response = await fetch('/api/helpdesk-tickets', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!response.ok) {
+                const err = await response.json();
+                throw new Error(err.message || 'Failed to load tickets.');
+            }
+            const tickets = await response.json();
+
+            if (tickets.length === 0) {
+                ticketHistoryDiv.innerHTML = '<p class="text-muted text-center mt-4">You have not submitted any tickets yet.</p>';
+                return;
+            }
+
+            ticketHistoryDiv.innerHTML = tickets.map(ticket => `
+                <div class="card ticket-card shadow-sm ${getPriorityBorder(ticket.priority)}">
+                    <div class="card-body p-3">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <h6 class="card-title mb-1">${ticket.subject}</h6>
+                            <span class="badge ${getStatusBadge(ticket.status)}">${ticket.status}</span>
+                        </div>
+                        <p class="card-text small text-muted">${ticket.description}</p>
+                        <div class="d-flex justify-content-between small text-muted mt-2">
+                            <span>Category: <strong>${ticket.category}</strong></span>
+                            <span>Submitted: <strong>${new Date(ticket.submitted_on).toLocaleDateString()}</strong></span>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        } catch (error) {
+            ticketHistoryDiv.innerHTML = `<p class="text-danger">${error.message}</p>`;
+        }
+    };
+
+    helpDeskForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const ticketData = {
+            category: document.getElementById('category').value,
+            priority: document.getElementById('priority').value,
+            subject: document.getElementById('subject').value,
+            description: document.getElementById('description').value,
+        };
+
+        try {
+            const response = await fetch('/api/helpdesk-tickets', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify(ticketData)
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.message);
+
+            showMessage(result.message, true);
+            helpDeskForm.reset();
+            loadTickets(); // Refresh the ticket list
+        } catch (error) {
+            showMessage(error.message, false);
+        }
+    });
+
+    // Initial load
+    loadTickets();
+})();
+</script>
